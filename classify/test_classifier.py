@@ -30,7 +30,7 @@ dict_samples = {
 				}
 
 
-input_sample = ["new_york", "nevada", "maryland"]
+input_sample = ["new york", "nevada", "maryland"]
 
 classification = ""
 max_similarity = 0 	# handles the similarity acceptance threshold on server side?

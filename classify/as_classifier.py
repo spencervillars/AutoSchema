@@ -8,6 +8,7 @@ from statistics 		import median
 import requests # e.g. requests.get('https://example.com/')
 import fileinput
 import argparse
+import re
 
 class AutoSchemaClassifier:
 
@@ -84,8 +85,8 @@ class AutoSchemaClassifier:
 		#
 		def getBestPath(wordA, wordB):
 			# TODO. make this waay better
-			synA = Word(wordA).get_synsets(pos=NOUN)
-			synB = Word(wordB).get_synsets(pos=NOUN)
+			synA = Word(re.sub(r"\s+", '_', wordA)).get_synsets(pos=NOUN)
+			synB = Word(re.sub(r"\s+", '_', wordB)).get_synsets(pos=NOUN)
 			synProduct = product(synA,synB)
 
 			max_similarity = 0
