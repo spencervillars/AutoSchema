@@ -68,7 +68,7 @@ def type_classifier(words):
 	
 	# print(results)
 	# print(Counter(results))
-	return(Counter(results).most_common()[0][0])
+	return(Counter(results))
 
 
 
