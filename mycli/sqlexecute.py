@@ -2,6 +2,7 @@ import logging
 import pymysql
 import sys
 import shlex
+import os
 import random
 from .packages import connection, special
 from .datatypes import type_classifier
@@ -10,9 +11,25 @@ import sqlparse
 _logger = logging.getLogger(__name__)
 
 SAMPLE_SIZE = 10#USED FOR RANDOM SAMPLINGS
+
+#WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. MEANING, IT CAN'T HANDLE FLOATS.
 HACK_MAGIC = "108276394"
 
+DICTIONARIES = {}
 
+#directory path
+#for every file in directory
+
+#for every line in file
+dirname = os.path.dirname(os.path.abspath(__file__)) + '/dictionaries/'
+print(os.path.dirname(os.path.abspath(__file__)))
+for fn in os.listdir(dirname):
+    if os.path.isfile(dirname + fn):
+        dict = [];
+        file = open(dirname + fn)
+        for line in file:
+            dict.append(line)
+        DICTIONARIES[fn] = dict
 
 class SQLExecute(object):
 
@@ -153,24 +170,37 @@ class SQLExecute(object):
             par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
         
         twod_array = [list(i) for i in zip(*twod_array)]
-        print(twod_array, file=sys.stderr)
+        #print(twod_array, file=sys.stderr)
 
         #We have the contents of the array, now generate our types.
         
         cl = asc(.2)
         
+        counts = {};
+        
         for column in twod_array:#for each column
             rand_sample = [ column[i] for i in sorted(random.sample(range(len(column)), min(len(column),SAMPLE_SIZE))) ]
+
             type = type_classifier(rand_sample)
+            if counts[type] == 0:
+                counts[type] = 1
+            else:
+                counts[type] = counts[type] + 1
 
             if type == 'string':
+                
+                #generate our random samples from dict
+                dict_sample = {}
+                for key,value in DICTIONARIES.iteritems():
+                    dict_sample[key] = [ value[i] for i in sorted(random.sample(range(len(value)), min(len(value),SAMPLE_SIZE))) ]
+
 
 
 
     def execute_normal_sql(self, split_sql):
         _logger.debug('Regular sql statement. sql: %r', split_sql)
         
-        #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS.
+        #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. MEANING, IT CAN'T HANDLE FLOATS.
         split_sql = split_sql.replace(".",HACK_MAGIC);
         parsed = sqlparse.parse(split_sql)
         stmt = parsed[0]
