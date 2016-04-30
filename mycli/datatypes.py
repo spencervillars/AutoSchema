@@ -1,4 +1,5 @@
 import re
+import sys
 from collections import Counter
 
 def type_classifier(words):
@@ -26,8 +27,8 @@ def type_classifier(words):
 			continue
 
 		###### Time
-		time1 = re.match(r'[0-9]{2}(:|\.)[0-9]{2}( (hours|hrs))?\b', word)
-		time2 = re.match(r'[0-9]?(:|\.)[0-9]{2}(( )?(PM|pm|AM|am))?\b', word)
+		time1 = re.match(r'[0-9]{2}(:)[0-9]{2}( (hours|hrs))?\b', word)
+		time2 = re.match(r'[0-9]?(:)[0-9]{2}(( )?(PM|pm|AM|am))?\b', word)
 		if time1 or time2:
 			results.append('time')
 			continue
@@ -68,18 +69,32 @@ def type_classifier(words):
 	
 	# print(results)
 	# print(Counter(results))
-	return(Counter(results))
+	counts = Counter(results)
+	total_count = len(words)
+	
+	#Strings can only be strings, so return this first.
+	if counts['string'] > 0:
+		return 'string'
 
+	#These are irreconcilable data types. If any of them exist without all of them existing, we return string.
+	for a in ['telephone','time','date']:
+		if counts[a] > 0:
+			return a if counts[a] == total_count else 'string'
 
+	#We now know we have no strings and no weird data types. Classify the remaining ones.
+	#float > currency > integer > zipcode
+	#zipcode can be an integer can be a currency can be a float
 
+	if counts['float'] > 0:
+		return 'float'
+	if counts['currency'] > 0:
+		return 'currency'
+	if counts['integer'] > 0:
+		return 'integer'
+	if counts['zipcode'] > 0:
+		return 'zipcode'
 
-
-
-
-
-
-
-
-
+	print("Error: Reached end of classification without returning type.",file=sys.stderr)
+	return 'string'#this will never happen....?
 
 

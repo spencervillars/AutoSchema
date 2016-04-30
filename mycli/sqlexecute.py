@@ -1,9 +1,18 @@
 import logging
 import pymysql
-import sqlparse
+import sys
+import shlex
+import random
 from .packages import connection, special
+from .datatypes import type_classifier
+import sqlparse
 
 _logger = logging.getLogger(__name__)
+
+SAMPLE_SIZE = 10#USED FOR RANDOM SAMPLINGS
+HACK_MAGIC = "108276394"
+
+
 
 class SQLExecute(object):
 
@@ -118,8 +127,67 @@ class SQLExecute(object):
             except special.CommandNotFound:  # Regular SQL
                 yield self.execute_normal_sql(sql)
 
+    def generate_schema(self, parsed):
+        '''
+        We want to execute a "create table" statement based on the parsed sequel.
+        
+        Input: An insert statement that contains all values for a table that
+            
+        '''
+        #print(stmt.tokens, file=sys.stderr)
+        
+        #we should first read for the VALUES keyword, so that we don't read values
+        twod_array = [];
+        
+        par = parsed.token_next_by_instance(0, sqlparse.sql.Parenthesis)
+        while par != None:
+            #par points to a parenthesis group token
+            #print(par, file=sys.stderr)
+            
+            parser = shlex.shlex(par.token_next(0).value)
+            parser.whitespace += ','
+            parser.whitespace_split = True
+            values = [x.strip("\'\"").replace(HACK_MAGIC,".") for x in list(parser)]
+            twod_array.append(values)
+            
+            par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
+        
+        twod_array = [list(i) for i in zip(*twod_array)]
+        print(twod_array, file=sys.stderr)
+
+        #We have the contents of the array, now generate our types.
+        
+        cl = asc(.2)
+        
+        for column in twod_array:#for each column
+            rand_sample = [ column[i] for i in sorted(random.sample(range(len(column)), min(len(column),SAMPLE_SIZE))) ]
+            type = type_classifier(rand_sample)
+
+            if type == 'string':
+
+
+
     def execute_normal_sql(self, split_sql):
         _logger.debug('Regular sql statement. sql: %r', split_sql)
+        
+        #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS.
+        split_sql = split_sql.replace(".",HACK_MAGIC);
+        parsed = sqlparse.parse(split_sql)
+        stmt = parsed[0]
+        type = stmt.get_type().upper()
+        if (type == "INSERT" or type == "REPLACE") and str(stmt.tokens[2]).upper() == "INTO":
+            matched = False
+            table_name = str(stmt.tokens[4]).upper()
+            for table in self.tables():
+                if table_name == table[0].upper():
+                    matched = True
+                    break
+            if not matched:
+                #We now have a table that is not already in our database.
+                #Let's call our table creation function.
+                self.generate_schema(stmt)
+    
+        split_sql = split_sql.replace(HACK_MAGIC,".");
         cur = self.conn.cursor()
         num_rows = cur.execute(split_sql)
         title = headers = None
