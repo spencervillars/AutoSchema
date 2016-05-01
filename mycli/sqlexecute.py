@@ -11,6 +11,18 @@ import sqlparse
 
 _logger = logging.getLogger(__name__)
 
+TYPE_LOOKUP_TABLE = {
+
+'string':'varchar',
+'currency':'float',
+'zipcode':'int',
+'integer':'int',
+'telephone':'varchar',
+'date':'varchar',#TODO: CHANGE THIS TO SUPPORT INNATE MYSQL DATE TYPE
+'time':'varchar'#TODO: CHANGE THIS TO SUPPORT INNATE MYSQL TIME TYPE
+
+}
+
 SAMPLE_SIZE = 100#USED FOR RANDOM SAMPLINGS
 
 #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. MEANING, IT CAN'T HANDLE FLOATS.
@@ -157,8 +169,8 @@ class SQLExecute(object):
         '''
         #print(stmt.tokens, file=sys.stderr)
         
-        table_name = parsed.tokens[4].value#should generalize this.
-        print(table_name,file=sys.stderr)
+        table_name = parsed.tokens[4].value#TODO: should generalize this.
+        #print(table_name,file=sys.stderr)
         
         #we should first read for the VALUES keyword, so that we don't read values
         twod_array = [];
@@ -177,29 +189,33 @@ class SQLExecute(object):
             par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
         
         twod_array = [list(i) for i in zip(*twod_array)]
-        print(twod_array, file=sys.stderr)
+        #print(twod_array, file=sys.stderr)
 
         #We have the contents of the array, now generate our types.
         
         cl = asc(.2)
         
-        counts = {};
+        counts = {}
         
+        CREATE_TABLE_SQL = "CREATE TABLE "+table_name+" ("
+
         for column in twod_array:#for each column
             rand_sample = [ column[i] for i in sorted(random.sample(range(len(column)), min(len(column),SAMPLE_SIZE))) ]
 
             type = type_classifier(rand_sample)
+            max_length = 0
 
             if type not in counts.keys():
                 counts[type] = 1
             else:
                 counts[type] = counts[type] + 1
-            
+        
             label = "Unk"
-
+            
             if type == 'string':
                 
                 #generate our random samples from dict
+                max_length = len(max(column,key=len))
                 
                 max_count = 0
                 match = ""
@@ -211,7 +227,7 @@ class SQLExecute(object):
                     if max_count < count:
                         max_count = count
                         match = key
-                            
+
                 if max_count > len(rand_sample)/3:
                     label = match
                 else:
@@ -225,17 +241,27 @@ class SQLExecute(object):
                         dict_sample = dict_samples[d]
                         
                         spts = cl.findShortestPathToSet(dict_sample,rand_sample)
-                        print(d + " " + str(spts))
+                        #print(d + " " + str(spts))
                         if spts > max_similarity and spts >= cl.minimum_set_similarity:
                             max_similarity = spts
                             label = d
-                        
+
             else:
                 label = type + str(counts[type])
-                
-            print("Type: "+type + ", \""+label+"\"",file=sys.stderr)
 
+            if type in TYPE_LOOKUP_TABLE.keys():
+                type = TYPE_LOOKUP_TABLE[type]
 
+            type = type.upper()
+
+            CREATE_TABLE_SQL += str(label) + " " + type + ("("+str(max_length+100)+")" if type == 'VARCHAR' else "") + ","
+            
+        #alright, now actually create the table.
+        
+        CREATE_TABLE_SQL = CREATE_TABLE_SQL.rstrip(",")#remove the last comma
+        CREATE_TABLE_SQL += ")"
+        print(CREATE_TABLE_SQL, file=sys.stderr)
+        self.execute_normal_sql(CREATE_TABLE_SQL)
 
     def execute_normal_sql(self, split_sql):
         _logger.debug('Regular sql statement. sql: %r', split_sql)
