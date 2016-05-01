@@ -6,30 +6,34 @@ import os
 import random
 from .packages import connection, special
 from .datatypes import type_classifier
+from .as_classifier import AutoSchemaClassifier as asc
 import sqlparse
 
 _logger = logging.getLogger(__name__)
 
-SAMPLE_SIZE = 10#USED FOR RANDOM SAMPLINGS
+SAMPLE_SIZE = 100#USED FOR RANDOM SAMPLINGS
 
 #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. MEANING, IT CAN'T HANDLE FLOATS.
 HACK_MAGIC = "108276394"
 
 DICTIONARIES = {}
+PROPER_NAMES = {}#{"name":[],"country":[],"location":[],"plant":[]}
 
 #directory path
 #for every file in directory
 
 #for every line in file
 dirname = os.path.dirname(os.path.abspath(__file__)) + '/dictionaries/'
-print(os.path.dirname(os.path.abspath(__file__)))
 for fn in os.listdir(dirname):
     if os.path.isfile(dirname + fn):
         dict = [];
         file = open(dirname + fn)
         for line in file:
-            dict.append(line)
-        DICTIONARIES[fn] = dict
+            dict.append(line.rstrip())
+        if fn in PROPER_NAMES.keys():
+            PROPER_NAMES[fn] = dict
+        else:
+            DICTIONARIES[fn] = dict
 
 class SQLExecute(object):
 
@@ -153,6 +157,9 @@ class SQLExecute(object):
         '''
         #print(stmt.tokens, file=sys.stderr)
         
+        table_name = parsed.tokens[4].value#should generalize this.
+        print(table_name,file=sys.stderr)
+        
         #we should first read for the VALUES keyword, so that we don't read values
         twod_array = [];
         
@@ -170,7 +177,7 @@ class SQLExecute(object):
             par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
         
         twod_array = [list(i) for i in zip(*twod_array)]
-        #print(twod_array, file=sys.stderr)
+        print(twod_array, file=sys.stderr)
 
         #We have the contents of the array, now generate our types.
         
@@ -182,18 +189,51 @@ class SQLExecute(object):
             rand_sample = [ column[i] for i in sorted(random.sample(range(len(column)), min(len(column),SAMPLE_SIZE))) ]
 
             type = type_classifier(rand_sample)
-            if counts[type] == 0:
+
+            if type not in counts.keys():
                 counts[type] = 1
             else:
                 counts[type] = counts[type] + 1
+            
+            label = "Unk"
 
             if type == 'string':
                 
                 #generate our random samples from dict
-                dict_sample = {}
-                for key,value in DICTIONARIES.iteritems():
-                    dict_sample[key] = [ value[i] for i in sorted(random.sample(range(len(value)), min(len(value),SAMPLE_SIZE))) ]
-
+                
+                max_count = 0
+                match = ""
+                for key in DICTIONARIES:
+                    count = 0
+                    for sample in rand_sample:
+                        if sample in DICTIONARIES[key]:
+                            count = count + 1
+                    if max_count < count:
+                        max_count = count
+                        match = key
+                            
+                if max_count > len(rand_sample)/3:
+                    label = match
+                else:
+                    dict_samples = {}
+                    for key in DICTIONARIES:
+                        value = DICTIONARIES[key]
+                        dict_samples[key] = [ value[i] for i in sorted(random.sample(range(len(value)), min(len(value),SAMPLE_SIZE))) ]
+                    
+                    max_similarity = 0 	# handles the similarity acceptance threshold on server side?
+                    for d in dict_samples:
+                        dict_sample = dict_samples[d]
+                        
+                        spts = cl.findShortestPathToSet(dict_sample,rand_sample)
+                        print(d + " " + str(spts))
+                        if spts > max_similarity and spts >= cl.minimum_set_similarity:
+                            max_similarity = spts
+                            label = d
+                        
+            else:
+                label = type + str(counts[type])
+                
+            print("Type: "+type + ", \""+label+"\"",file=sys.stderr)
 
 
 

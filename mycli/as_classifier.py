@@ -4,6 +4,7 @@ from itertools 			import product
 from textblob 			import Word
 from textblob.wordnet 	import NOUN
 from statistics 		import median
+from math import floor
 
 import requests # e.g. requests.get('https://example.com/')
 import fileinput
@@ -106,6 +107,8 @@ class AutoSchemaClassifier:
 		for c in combos:
 			paths.append(getShortestPath(c[0],c[1]))
 
+		#paths.sort()
 		ret = 0
-		if len(paths): ret = median(paths)
+		if len(paths):
+			ret = median(paths) + floor(1000*max(paths)) #sum( p * (p > self.minimum_set_similarity) for p in paths)
 		return ret
