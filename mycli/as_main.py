@@ -34,12 +34,16 @@ HACK_MAGIC = "108276394"
 
 
 DICTIONARIES = {}
-PROPER_NAMES = {}#{"name":[],"country":[],"location":[],"plant":[]}
+PROPER_NAMES = {} #{"name":[],"country":[],"location":[],"plant":[]}
 
-#directory path
-#for every file in directory
 
-#for every line in file
+#
+# We load the dictionaries.
+#
+#   directory path
+#       for every file in directory
+#           for every line in file
+#
 dirname = os.path.dirname(os.path.abspath(__file__)) + '/dictionaries/'
 for fn in os.listdir(dirname):
     if os.path.isfile(dirname + fn):
@@ -52,7 +56,9 @@ for fn in os.listdir(dirname):
         else:
             DICTIONARIES[fn] = dict
 
-#CREDIT: http://stackoverflow.com/questions/736043/checking-if-a-string-can-be-converted-to-float-in-python
+#
+# CREDIT: http://stackoverflow.com/questions/736043/checking-if-a-string-can-be-converted-to-float-in-python
+#
 def isfloat(value):
     try:
         float(value)
@@ -70,10 +76,14 @@ def isint(value):
 def isstring(value):
     return isinstance(value, str)
 
+
+#
+# an AutoSchema classifier object. Imported from as_classifier
+#
 cl = asc(150)
 
-class AutoSchema:
 
+class AutoSchema:
     def parse_values(self, parsed):
         twod_array = [];
         par = parsed.token_next_by_instance(0, sqlparse.sql.Parenthesis)
