@@ -23,7 +23,7 @@ TYPE_LOOKUP_TABLE = {
 
 }
 
-SAMPLE_SIZE = 100#USED FOR RANDOM SAMPLINGS
+SAMPLE_SIZE = 20#USED FOR RANDOM SAMPLINGS
 
 #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. MEANING, IT CAN'T HANDLE FLOATS.
 HACK_MAGIC = "108276394"
@@ -33,7 +33,6 @@ PROPER_NAMES = {}#{"name":[],"country":[],"location":[],"plant":[]}
 
 #directory path
 #for every file in directory
-
 #for every line in file
 dirname = os.path.dirname(os.path.abspath(__file__)) + '/dictionaries/'
 for fn in os.listdir(dirname):
@@ -67,6 +66,11 @@ class SQLExecute(object):
     table_columns_query = '''select TABLE_NAME, COLUMN_NAME from information_schema.columns
                                     where table_schema = '%s'
                                     order by table_name,ordinal_position'''
+    
+
+    columns_info_query = '''select COLUMN_NAME,DATA_TYPE from information_schema.columns
+                                    where table_schema = '%s' AND table_name = '%s'
+                                    order by ordinal_position'''
 
     def __init__(self, database, user, password, host, port, socket, charset,
                  local_infile, ssl=False):
@@ -160,22 +164,13 @@ class SQLExecute(object):
             except special.CommandNotFound:  # Regular SQL
                 yield self.execute_normal_sql(sql)
 
-    def generate_schema(self, parsed):
-        '''
-        We want to execute a "create table" statement based on the parsed sequel.
-        
-        Input: An insert statement that contains all values for a table that
-            
-        '''
-        #print(stmt.tokens, file=sys.stderr)
-        
-        table_name = parsed.tokens[4].value#TODO: should generalize this.
-        #print(table_name,file=sys.stderr)
-        
-        #we should first read for the VALUES keyword, so that we don't read values
+
+    def parse_values(self, parsed):
         twod_array = [];
         
         par = parsed.token_next_by_instance(0, sqlparse.sql.Parenthesis)
+        
+        #Read in the text in parentheses and parse it into actual values.
         while par != None:
             #par points to a parenthesis group token
             #print(par, file=sys.stderr)
@@ -189,7 +184,46 @@ class SQLExecute(object):
             par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
         
         twod_array = [list(i) for i in zip(*twod_array)]
-        #print(twod_array, file=sys.stderr)
+        return twod_array
+
+    def check_rearranged(self, parsed):
+        return True
+
+    def rearrange(self, parsed):
+        table_name = parsed.tokens[4].value
+        
+        names = []
+        types = []
+        values = []
+        
+        for table_column in self.columns_type(table_name):
+            names.append(table_name[0])
+            types.append(table_name[1])
+            values.append([])
+            
+        select_query = "SELECT * FROM " + table_name
+
+        with self.conn.cursor() as cur:
+            cur.execute(select_query)
+            for row in cur:
+                i = 0;
+                for value in row:
+                    values[i].append(value)
+                    i += 1
+        
+
+    def generate_schema(self, parsed):
+        '''
+        We want to execute a "create table" statement based on the parsed sequel.
+        
+        Input: An insert statement that contains all values for a table that
+            
+        '''
+        #print(stmt.tokens, file=sys.stderr)
+        
+        table_name = parsed.tokens[4].value#TODO: should generalize this.
+        
+        twod_array = self.parse_values(parsed)
 
         #We have the contents of the array, now generate our types.
         
@@ -260,7 +294,7 @@ class SQLExecute(object):
         
         CREATE_TABLE_SQL = CREATE_TABLE_SQL.rstrip(",")#remove the last comma
         CREATE_TABLE_SQL += ")"
-        print(CREATE_TABLE_SQL, file=sys.stderr)
+        #print(CREATE_TABLE_SQL, file=sys.stderr)
         self.execute_normal_sql(CREATE_TABLE_SQL)
 
     def execute_normal_sql(self, split_sql):
@@ -282,6 +316,10 @@ class SQLExecute(object):
                 #We now have a table that is not already in our database.
                 #Let's call our table creation function.
                 self.generate_schema(stmt)
+            else:
+                #let's check for rearrangements....
+                if self.check_rearranged(parsed):
+                    self.rearrange(stmt)
     
         split_sql = split_sql.replace(HACK_MAGIC,".");
         cur = self.conn.cursor()
@@ -306,6 +344,14 @@ class SQLExecute(object):
         with self.conn.cursor() as cur:
             _logger.debug('Tables Query. sql: %r', self.tables_query)
             cur.execute(self.tables_query)
+            for row in cur:
+                yield row
+
+    def columns_type(self,table):
+        """column invormation for a given table"""
+        with self.conn.cursor() as cur:
+            #_logger.debug('Columns Query. sql: %r', self.table_columns_query)
+            cur.execute(self.columns_info_query % (self.dbname,table))
             for row in cur:
                 yield row
 
