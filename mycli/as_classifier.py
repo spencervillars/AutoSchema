@@ -69,7 +69,7 @@ class AutoSchemaClassifier:
 		num_cols = len(known_column_samples)
 
 		for c in known_column_samples:
-			t = findShortestPathToSet([string_to_classify], known_column_samples[c])
-			similarity.append(t)
+			t = self.findShortestPathToSet([string_to_classify], c)
+			similarities.append(t)
 
 		return similarities

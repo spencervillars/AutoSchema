@@ -7,8 +7,12 @@ import shlex
 from .as_classifier import AutoSchemaClassifier as asc
 from .packages import connection, special
 from .datatypes import type_classifier
+from .number_sanitize import check_sequential, mean_sd, pdf
 import sqlparse
 import random
+from munkres import Munkres
+
+munk = Munkres()
 
 TYPE_LOOKUP_TABLE = {
 
@@ -22,8 +26,8 @@ TYPE_LOOKUP_TABLE = {
 
 }
 
-SAMPLE_SIZE = 100#USED FOR RANDOM SAMPLINGS
-
+SAMPLE_SIZE = 50#USED FOR RANDOM SAMPLINGS
+LARGE_SAMPLE_SIZE = 10000#MAXIMUM TO EVER READ FROM EXISTING COLUMN TO CALCULATE SIMILARITIES TO NEW CANDIDATE INPUT
 
 #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. MEANING, IT CAN'T HANDLE FLOATS.
 HACK_MAGIC = "108276394"
@@ -48,6 +52,25 @@ for fn in os.listdir(dirname):
         else:
             DICTIONARIES[fn] = dict
 
+#CREDIT: http://stackoverflow.com/questions/736043/checking-if-a-string-can-be-converted-to-float-in-python
+def isfloat(value):
+    try:
+        float(value)
+        return True
+    except ValueError:
+        return False
+
+def isint(value):
+    try:
+        int(value)
+        return True
+    except ValueError:
+        return False
+
+def isstring(value):
+    return isinstance(value, str)
+
+cl = asc(150)
 
 class AutoSchema:
 
@@ -74,28 +97,149 @@ class AutoSchema:
     def check_rearranged(self, parsed):
         return True
 
-    def rearrange(self, parsed):
+    def rearrange(self, parsed, sqlexecute):
         table_name = parsed.tokens[4].value
         
         names = []
         types = []
         values = []
+        means = []
+        deviations = []
+        sequential = []
         
-        for table_column in self.columns_type(table_name):
-            names.append(table_name[0])
-            types.append(table_name[1])
+        for table_column in sqlexecute.columns_type(table_name):
+            names.append(table_column[0])
+            types.append(table_column[1].upper())
             values.append([])
-            
-        select_query = "SELECT * FROM " + table_name
+        
+        select_query = "SELECT * FROM " + table_name + " ORDER BY RAND() LIMIT " + str(LARGE_SAMPLE_SIZE)
 
-        with self.conn.cursor() as cur:
+        with sqlexecute.conn.cursor() as cur:
             cur.execute(select_query)
             for row in cur:
                 i = 0;
                 for value in row:
                     values[i].append(value)
                     i += 1
+    
+        for i in range(len(names)):
+            type = types[i]
+            value_array = values[i]
         
+            if type != "FLOAT" and type != "INT":
+                means.append(0)
+                deviations.append(0)
+                sequential.append(0)
+                continue
+
+            tuple = mean_sd(value_array)
+            means.append(tuple[0])
+            deviations.append(tuple[1])
+            #sequential.append(check_sequential(value_array))
+    
+        
+        twod_array = [];
+        output_array = []
+        
+        
+        par = parsed.token_next_by_instance(0, sqlparse.sql.Parenthesis)
+        
+        #
+        #TODO: ADD SUPPORT FOR "INSERT INTO TABLE (COL1, COL2, COL3) VALUES ()"
+        #
+        
+        #Read in the text in parentheses and parse it into actual values.
+        while par != None:
+            #par points to a parenthesis group token
+            #print(par, file=sys.stderr)
+            
+            parser = shlex.shlex(par.token_next(0).value)
+            parser.whitespace += ','
+            parser.whitespace_split = True
+            array = [x.strip("\'\"").replace(HACK_MAGIC,".") for x in list(parser)]
+            twod_array.append(array)
+
+            par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
+ 
+         #print("testing2",file=sys.stderr)
+        for row in twod_array:
+     
+            score_matrix = []
+            
+            if len(row) != len(names):
+                print("Error: Column number mismatch. Not supported (yet).", file=sys.stderr)
+            
+            #print("testing3",file=sys.stderr)
+            for column in row:
+                scores = []
+                
+                #print("testing4",file=sys.stderr)
+                for i in range(len(row)):
+                    #print("testing5",file=sys.stderr)
+                    name = names[i]
+                    type = types[i]
+                    column_values = values[i]
+                    
+                    score = 1
+                    
+                    #print(column,file=sys.stderr)
+                    
+                    if type=="INT" and not isint(column) and not isfloat(column):#type mismatch
+                        scores.append(score)
+                        continue
+                    if type=="FLOAT" and not isfloat(column) and not isint(column):#type mismatch
+                        scores.append(score)
+                        continue
+                    if type=="VARCHAR" and not isstring(column):
+                        scores.append(score)
+                        continue
+                
+                    if type=="FLOAT" or type=="INT":
+                        score = pdf(float(column),float(means[i]),float(deviations[i]))
+                    else:
+                        #not a float or an int. Assume it's a string now?
+                        #....how do we deal with dates?
+                        #TODO: DEAL WITH DATES, TELEPHONE NUMBERS, OTHER ODDLY FORMATTED STRINGS.
+                        #^IMPORTANT
+                        
+                        sample = [ column_values[i] for i in sorted(random.sample(range(len(column_values)), min(len(column_values),SAMPLE_SIZE))) ]
+                        score = cl.computeSimilarityOfStringToColumns([sample],column)[0]
+                        score = score / 1000
+
+                    scores.append(1 - score)
+
+                score_matrix.append(scores)
+    
+            #we should now have a square matrix. Let's check this.
+            indices = munk.compute(score_matrix)
+
+            rearranged_array = [None] * len(row)
+            for x,y in indices:
+                rearranged_array[x] = row[y]
+                #print('(%d, %d) -> %f' % (row, column, 1 - score_matrix[row][column]),file=sys.stderr)
+            output_array.append(rearranged_array)
+        
+        #now to generate the sql...
+        SQL_QUERY = ""
+            
+        for token in parsed.tokens:
+            SQL_QUERY += token.value
+            if token.value.upper() == "VALUES":
+                break
+        
+        for array in output_array:
+            sub_string = " ("
+            
+            for value in array:
+                sub_string += "'" + str(value) + "',"
+            sub_string = sub_string.rstrip(", ")
+            sub_string += "), "
+            SQL_QUERY += sub_string
+                
+        SQL_QUERY = SQL_QUERY.rstrip(", ")
+        print(SQL_QUERY,file=sys.stderr)
+
+        return SQL_QUERY
 
     def generate_schema(self, parsed):
         '''
@@ -111,8 +255,6 @@ class AutoSchema:
         twod_array = self.parse_values(parsed)
 
         #We have the contents of the array, now generate our types.
-        
-        cl = asc(.2)
         
         counts = {}
         

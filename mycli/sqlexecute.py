@@ -35,6 +35,10 @@ class SQLExecute(object):
     table_columns_query = '''select TABLE_NAME, COLUMN_NAME from information_schema.columns
                                     where table_schema = '%s'
                                     order by table_name,ordinal_position'''
+    
+    columns_info_query = '''select COLUMN_NAME,DATA_TYPE from information_schema.columns
+                                            where table_schema = '%s' AND table_name = '%s'
+                                            order by ordinal_position'''
 
     def __init__(self, database, user, password, host, port, socket, charset,
                  local_infile, ssl=False):
@@ -146,6 +150,7 @@ class SQLExecute(object):
         parsed = sqlparse.parse(split_sql)
         stmt = parsed[0]
         type = stmt.get_type().upper()
+    
         if (type == "INSERT" or type == "REPLACE") and str(stmt.tokens[2]).upper() == "INTO":
             matched = False
             table_name = str(stmt.tokens[4]).upper()
@@ -157,6 +162,9 @@ class SQLExecute(object):
                 #We now have a table that is not already in our database.
                 #Let's call our table creation function.
                 self.generate_schema(stmt)
+            else:
+                if autoschema.check_rearranged(0):
+                    split_sql = autoschema.rearrange(stmt,self)
     
         split_sql = split_sql.replace(HACK_MAGIC,".");
         cur = self.conn.cursor()
@@ -189,6 +197,14 @@ class SQLExecute(object):
         with self.conn.cursor() as cur:
             _logger.debug('Columns Query. sql: %r', self.table_columns_query)
             cur.execute(self.table_columns_query % self.dbname)
+            for row in cur:
+                yield row
+
+    def columns_type(self,table):
+        """column invormation for a given table"""
+        with self.conn.cursor() as cur:
+            #_logger.debug('Columns Query. sql: %r', self.table_columns_query)
+            cur.execute(self.columns_info_query % (self.dbname,table))
             for row in cur:
                 yield row
 
