@@ -63,7 +63,7 @@ class AutoSchemaClassifier:
 	#
 	# this function returns a list of the similarities
 	#
-	def computeSimilarityOfStringToCloumns(self, known_column_samples, string_to_classify):
+	def computeSimilarityOfStringToColumns(self, known_column_samples, string_to_classify):
 
 		similarities = []		
 		num_cols = len(known_column_samples)
