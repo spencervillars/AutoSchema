@@ -159,7 +159,7 @@ class AutoSchema:
             array = [x.strip("\'\"").replace(HACK_MAGIC,".") for x in list(parser)]
             twod_array.append(array)
 
-            par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
+            par = parsed.token_next_by_instance(parsed.token_indexgit (par)+1, sqlparse.sql.Parenthesis)
  
          #print("testing2",file=sys.stderr)
         for row in twod_array:
@@ -180,7 +180,7 @@ class AutoSchema:
                     type = types[i]
                     column_values = values[i]
                     
-                    score = 1
+                    score = 2
                     
                     #print(column,file=sys.stderr)
                     
@@ -190,12 +190,14 @@ class AutoSchema:
                     if type=="FLOAT" and not isfloat(column) and not isint(column):#type mismatch
                         scores.append(score)
                         continue
-                    if type=="VARCHAR" and not isstring(column):
-                        scores.append(score)
+                    if type=="VARCHAR" and (isfloat(column) or isint(column)):
+                        scores.append(1.5)
                         continue
                 
                     if type=="FLOAT" or type=="INT":
                         score = pdf(float(column),float(means[i]),float(deviations[i]))
+                        if score != score :
+                            score = 0
                     else:
                         #not a float or an int. Assume it's a string now?
                         #....how do we deal with dates?
@@ -211,6 +213,7 @@ class AutoSchema:
                 score_matrix.append(scores)
     
             #we should now have a square matrix. Let's check this.
+            print(score_matrix,file=sys.stderr)
             indices = munk.compute(score_matrix)
 
             rearranged_array = [None] * len(row)
