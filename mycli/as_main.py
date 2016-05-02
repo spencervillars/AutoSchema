@@ -159,7 +159,7 @@ class AutoSchema:
             array = [x.strip("\'\"").replace(HACK_MAGIC,".") for x in list(parser)]
             twod_array.append(array)
 
-            par = parsed.token_next_by_instance(parsed.token_indexgit (par)+1, sqlparse.sql.Parenthesis)
+            par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
  
          #print("testing2",file=sys.stderr)
         for row in twod_array:
@@ -213,13 +213,13 @@ class AutoSchema:
                 score_matrix.append(scores)
     
             #we should now have a square matrix. Let's check this.
-            print(score_matrix,file=sys.stderr)
+            #print(score_matrix,file=sys.stderr)
             indices = munk.compute(score_matrix)
 
             rearranged_array = [None] * len(row)
             for x,y in indices:
-                rearranged_array[x] = row[y]
-                #print('(%d, %d) -> %f' % (row, column, 1 - score_matrix[row][column]),file=sys.stderr)
+                rearranged_array[y] = row[x]
+            #print(rearranged_array,file=sys.stderr)
             output_array.append(rearranged_array)
         
         #now to generate the sql...
@@ -231,6 +231,7 @@ class AutoSchema:
                 break
         
         for array in output_array:
+            #print(array,file=sys.stderr)
             sub_string = " ("
             
             for value in array:
