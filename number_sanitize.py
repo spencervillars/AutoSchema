@@ -13,11 +13,17 @@ def check_sequential(array):
 	else:
 		return False
 
-def pdf(input, array):
+def mean_sd(array):
 	'''
-	Input: new value, list of numbers
-	Output: pdf * 100 that new value belongs to this list of numbers assuming the list is
+	Input: list of numbers
+	Output: (mean, sd)
+	'''
+	return (np.mean(array), np.std(array))
+
+def pdf(input, mean, sd):
+	'''
+	Input: new value, mean, sd
+	Output: pdf that new value belongs to this list of numbers assuming the list is
 	modelled as a normal distribution
 	'''
-	return (stats.norm.pdf(input, loc=np.mean(array), scale=np.std(array)) * 100)
-	
+	return (stats.norm.pdf(input, loc=mean, scale=sd))
