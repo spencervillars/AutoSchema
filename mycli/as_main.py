@@ -324,10 +324,5 @@ class AutoSchema:
 
         return CREATE_TABLE_SQL
 
-        #TODO: do this in the outside!!!!!!!!
-
-
-        #print(CREATE_TABLE_SQL, file=sys.stderr)
-        self.execute_normal_sql(CREATE_TABLE_SQL)
 
 			
