@@ -26,8 +26,9 @@ TYPE_LOOKUP_TABLE = {
 
 }
 
-SAMPLE_SIZE = 50#USED FOR RANDOM SAMPLINGS
-LARGE_SAMPLE_SIZE = 10000#MAXIMUM TO EVER READ FROM EXISTING COLUMN TO CALCULATE SIMILARITIES TO NEW CANDIDATE INPUT
+SAMPLE_SIZE       = 50    # USED FOR RANDOM SAMPLINGS
+LARGE_SAMPLE_SIZE = 10000 # MAXIMUM TO EVER READ FROM EXISTING COLUMN TO CALCULATE SIMILARITIES TO NEW CANDIDATE INPUT
+DICT_FRACTION     = .333  # FRACTION OF DICTIONARY WE NEED TO HIT BEFORE WE RUN WORDNET 
 
 #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. MEANING, IT CAN'T HANDLE FLOATS.
 HACK_MAGIC = "108276394"
@@ -84,14 +85,23 @@ cl = asc(150)  # TODO: the AutoSchema object should probably initialize its own 
 
 
 class AutoSchema:
+
+    #
+    # Input is the parsed input to mycli (e.g. "INSERT INTO x VALUES (...").
+    # Extracts the values in parentheses groups, converts values to an array.
+    # e.g. "VALUES (x1,x2),(y1,y2)" are converted into twod_array:
+    #
+    #   x1 x2
+    #   y1 y2
+    #
     def parse_values(self, parsed):
         twod_array = [];
         par = parsed.token_next_by_instance(0, sqlparse.sql.Parenthesis)
         
-        #Read in the text in parentheses and parse it into actual values.
+        # Read in the text in parentheses and parse it into actual values.
         while par != None:
-            #par points to a parenthesis group token
-            #print(par, file=sys.stderr)
+            # par points to a parenthesis group token
+            # print(par, file=sys.stderr)
             
             parser = shlex.shlex(par.token_next(0).value)
             parser.whitespace += ','
@@ -104,6 +114,10 @@ class AutoSchema:
         twod_array = [list(i) for i in zip(*twod_array)]
         return twod_array
 
+    #
+    # TODO: (future work). This function will check if it's necesarry to
+    # rearrange the input or not.
+    #
     def check_rearranged(self, parsed):
         return True
 
@@ -206,9 +220,11 @@ class AutoSchema:
                     score = 2
                     
                     #
-                    # TODO: we assign score based on datatype, but we don't consider the format
+                    # TODO: (future) we assign score for datatype, but we don't consider the format
                     # of numerical vales, whereas we do consider the semantic meaning of 
                     # string values. We will want to consider numerical format in the future.
+                    # Currently our system can't tell the difference between zipcode and
+                    # phone number, so this will result in annoying rearrangements
                     #
 
                     # determine the datatype of xi = column, assign a score based on that
@@ -273,6 +289,11 @@ class AutoSchema:
 
         return SQL_QUERY
 
+    #
+    # This generates a schema. This function will get called when the client
+    # attempts to insert into a table that does not exists in the database
+    # AND that has no defined schema. 
+    #
     def generate_schema(self, parsed):
         '''
         We want to execute a "create table" statement based on the parsed sequel.
@@ -283,10 +304,25 @@ class AutoSchema:
         
         table_name = parsed.tokens[4].value # TODO: should generalize this.
         
+        #
+        # the values from the input converted into array,
+        # e.g. the stuff in parantheses in "...VALUES (x1,...,xn),(y1,...,yn)")
+        #
         twod_array = self.parse_values(parsed)
 
-        # We have the contents of the array, now generate our types.
-        
+        # 
+        # We have the contents of the array, now infer the datatype of each column.
+        #   1. take a random sample of the input of size SAMPLE_SIZE.
+        #   2. test if we can identify a numerical value format in
+        #      the sample (e.g. INT, float, zipcode...)
+        #   3. otherwise, the sample is a string sample. Try to I.D. it semantically
+        #       a. probe the dictionary for direct matches. If samplesize*DICT_FRACTION 
+        #          of the sample is found in dictionary, no need to run wordnet
+        #       b. else, we do wordnet comparisons on the sample to classify
+        #          the input semantically 
+        # If it's a numerical value, we run a bunch of regexp tests to see if we
+        # infer something about the format of the number. 
+        #
         counts = {}
         
         CREATE_TABLE_SQL = "CREATE TABLE "+table_name+" ("
@@ -306,7 +342,7 @@ class AutoSchema:
             
             if type == 'string':
                 
-                #generate our random samples from dict
+                # generate our random samples from dict
                 max_length = len(max(column,key=len))
                 
                 max_count = 0
@@ -320,7 +356,7 @@ class AutoSchema:
                         max_count = count
                         match = key
 
-                if max_count > len(rand_sample)/3:
+                if max_count > len(rand_sample)*DICT_FRACTION:
                     label = match
                 else:
                     dict_samples = {}
