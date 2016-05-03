@@ -34,7 +34,7 @@ def type_classifier(words):
 			continue
 
 		###### Currency
-		curr = re.match(r'\$?[0-9]+(,[0-9]{3})*\.[0-9]{2}$', word)
+		curr = re.match(r'[0-9]+(,[0-9]{3})*\.[0-9]{2}$', word)
 		if curr:
 			results.append('currency')
 			continue

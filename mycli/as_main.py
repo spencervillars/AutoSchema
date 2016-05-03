@@ -18,7 +18,7 @@ TYPE_LOOKUP_TABLE = {
 
 'string':'varchar',
 'currency':'float',
-'zipcode':'int',
+'zipcode':'varchar',
 'integer':'int',
 'telephone':'varchar',
 'date':'varchar',#TODO: CHANGE THIS TO SUPPORT INNATE MYSQL DATE TYPE
@@ -348,9 +348,9 @@ class AutoSchema:
 
             CREATE_TABLE_SQL += str(label) + " " + type + ("("+str(max_length+100)+")" if type == 'VARCHAR' else "") + ","
             
-        #alright, now actually create the table.
+        # alright, now actually create the table.
         
-        CREATE_TABLE_SQL = CREATE_TABLE_SQL.rstrip(",")#remove the last comma
+        CREATE_TABLE_SQL = CREATE_TABLE_SQL.rstrip(",") # remove the last comma
         CREATE_TABLE_SQL += ")"
 
         return CREATE_TABLE_SQL
