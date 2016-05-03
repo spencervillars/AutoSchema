@@ -72,18 +72,21 @@ def type_classifier(words):
 	counts = Counter(results)
 	total_count = len(words)
 	
-	#Strings can only be strings, so return this first.
+
+	# Strings can only be strings, so return this first.
 	if counts['string'] > 0:
 		return 'string'
 
-	#These are irreconcilable data types. If any of them exist without all of them existing, we return string.
+	#
+	# These are irreconcilable data types. If any of them exist without all of them existing, we return string.
+	#
 	for a in ['telephone','time','date']:
 		if counts[a] > 0:
 			return a if counts[a] == total_count else 'string'
 
-	#We now know we have no strings and no weird data types. Classify the remaining ones.
-	#float > currency > integer > zipcode
-	#zipcode can be an integer can be a currency can be a float
+	# We now know we have no strings and no weird data types. Classify the remaining ones.
+	# float > currency > integer > zipcode
+	# zipcode can be an integer can be a currency can be a float
 
 	if counts['float'] > 0:
 		return 'float'
