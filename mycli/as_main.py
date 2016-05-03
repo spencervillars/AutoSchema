@@ -34,12 +34,15 @@ HACK_MAGIC = "108276394"
 
 
 DICTIONARIES = {}
-PROPER_NAMES = {}#{"name":[],"country":[],"location":[],"plant":[]}
+PROPER_NAMES = {} #{"name":[],"country":[],"location":[],"plant":[]}
 
-#directory path
-#for every file in directory
 
-#for every line in file
+#
+# Load the dictionaries:
+#   directory path
+#       for every file in directory
+#           for every line in file
+#
 dirname = os.path.dirname(os.path.abspath(__file__)) + '/dictionaries/'
 for fn in os.listdir(dirname):
     if os.path.isfile(dirname + fn):
@@ -52,7 +55,9 @@ for fn in os.listdir(dirname):
         else:
             DICTIONARIES[fn] = dict
 
-#CREDIT: http://stackoverflow.com/questions/736043/checking-if-a-string-can-be-converted-to-float-in-python
+#
+# CREDIT: http://stackoverflow.com/questions/736043/checking-if-a-string-can-be-converted-to-float-in-python
+#
 def isfloat(value):
     try:
         float(value)
@@ -70,10 +75,15 @@ def isint(value):
 def isstring(value):
     return isinstance(value, str)
 
-cl = asc(150)
+
+#
+# An AutoSchema classifier object. Imported from as_classifier.
+# The argument is the minimum_set_similarity.
+#
+cl = asc(150)  # TODO: the AutoSchema object should probably initialize its own as_classifier object
+
 
 class AutoSchema:
-
     def parse_values(self, parsed):
         twod_array = [];
         par = parsed.token_next_by_instance(0, sqlparse.sql.Parenthesis)
@@ -107,13 +117,22 @@ class AutoSchema:
         deviations = []
         sequential = []
         
+        #
+        # extract columns names and their datatypes from table
+        #
         for table_column in sqlexecute.columns_type(table_name):
             names.append(table_column[0])
             types.append(table_column[1].upper())
             values.append([])
         
+        #
+        # get a random sample from table
+        #
         select_query = "SELECT * FROM " + table_name + " ORDER BY RAND() LIMIT " + str(LARGE_SAMPLE_SIZE)
 
+        #
+        # store values from existing table into 'values' array
+        #
         with sqlexecute.conn.cursor() as cur:
             cur.execute(select_query)
             for row in cur:
@@ -121,7 +140,10 @@ class AutoSchema:
                 for value in row:
                     values[i].append(value)
                     i += 1
-    
+        #
+        # compute statistical information for each column if it is an INT or FLOAT
+        # otherwise, fill in 0 for that columns in the stats arrays
+        #
         for i in range(len(names)):
             type = types[i]
             value_array = values[i]
@@ -136,32 +158,33 @@ class AutoSchema:
             means.append(tuple[0])
             deviations.append(tuple[1])
             #sequential.append(check_sequential(value_array))
-    
-        
-        twod_array = [];
-        output_array = []
-        
+            
         
         par = parsed.token_next_by_instance(0, sqlparse.sql.Parenthesis)
         
-        #
-        #TODO: ADD SUPPORT FOR "INSERT INTO TABLE (COL1, COL2, COL3) VALUES ()"
-        #
         
-        #Read in the text in parentheses and parse it into actual values.
+        # TODO: ADD SUPPORT FOR "INSERT INTO TABLE (COL1, COL2, COL3) VALUES ()"
+
+        #
+        # Read in the text in parentheses (i.e. the input) and parse it into 
+        # actual values. 'par' points to a parenthesis group token.
+        #
+        twod_array = [];  # each row is one row from input
+        output_array = []
         while par != None:
-            #par points to a parenthesis group token
-            #print(par, file=sys.stderr)
-            
             parser = shlex.shlex(par.token_next(0).value)
             parser.whitespace += ','
             parser.whitespace_split = True
             array = [x.strip("\'\"").replace(HACK_MAGIC,".") for x in list(parser)]
+           
             twod_array.append(array)
 
             par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
- 
-         #print("testing2",file=sys.stderr)
+
+        #
+        # for each row of input (x1,x2,...,xn) we determine which column in the
+        # table each xi should go
+        #
         for row in twod_array:
      
             score_matrix = []
@@ -169,21 +192,26 @@ class AutoSchema:
             if len(row) != len(names):
                 print("Error: Column number mismatch. Not supported (yet).", file=sys.stderr)
             
-            #print("testing3",file=sys.stderr)
+            #
+            # for each xi
+            #
             for column in row:
                 scores = []
                 
-                #print("testing4",file=sys.stderr)
                 for i in range(len(row)):
-                    #print("testing5",file=sys.stderr)
                     name = names[i]
                     type = types[i]
                     column_values = values[i]
                     
                     score = 2
                     
-                    #print(column,file=sys.stderr)
-                    
+                    #
+                    # TODO: we assign score based on datatype, but we don't consider the format
+                    # of numerical vales, whereas we do consider the semantic meaning of 
+                    # string values. We will want to consider numerical format in the future.
+                    #
+
+                    # determine the datatype of xi = column, assign a score based on that
                     if type=="INT" and not isint(column) and not isfloat(column):#type mismatch
                         scores.append(score)
                         continue
@@ -191,7 +219,7 @@ class AutoSchema:
                         scores.append(score)
                         continue
                     if type=="VARCHAR" and (isfloat(column) or isint(column)):
-                        scores.append(1.5)
+                        scores.append(1.5) # 1.5 is a more desirable score than 2 because munkres minimizes
                         continue
                 
                     if type=="FLOAT" or type=="INT":
@@ -199,10 +227,10 @@ class AutoSchema:
                         if score != score :
                             score = 0
                     else:
-                        #not a float or an int. Assume it's a string now?
-                        #....how do we deal with dates?
-                        #TODO: DEAL WITH DATES, TELEPHONE NUMBERS, OTHER ODDLY FORMATTED STRINGS.
-                        #^IMPORTANT
+                        # not a float or an int. Assume it's a string now?
+                        # ....how do we deal with dates?
+                        # TODO: DEAL WITH DATES, TELEPHONE NUMBERS, OTHER ODDLY FORMATTED STRINGS.
+                        # ^IMPORTANT
                         
                         sample = [ column_values[i] for i in sorted(random.sample(range(len(column_values)), min(len(column_values),SAMPLE_SIZE))) ]
                         score = cl.computeSimilarityOfStringToColumns([sample],column)[0]
@@ -212,17 +240,17 @@ class AutoSchema:
 
                 score_matrix.append(scores)
     
-            #we should now have a square matrix. Let's check this.
-            #print(score_matrix,file=sys.stderr)
+            # we should now have a square matrix. Let's check this.
+            # print(score_matrix,file=sys.stderr)
             indices = munk.compute(score_matrix)
 
             rearranged_array = [None] * len(row)
             for x,y in indices:
                 rearranged_array[y] = row[x]
-            #print(rearranged_array,file=sys.stderr)
+
             output_array.append(rearranged_array)
         
-        #now to generate the sql...
+        # now to generate the sql...
         SQL_QUERY = ""
             
         for token in parsed.tokens:
@@ -252,19 +280,18 @@ class AutoSchema:
         Input: An insert statement that contains all values for a table that
             
         '''
-        #print(stmt.tokens, file=sys.stderr)
         
-        table_name = parsed.tokens[4].value#TODO: should generalize this.
+        table_name = parsed.tokens[4].value # TODO: should generalize this.
         
         twod_array = self.parse_values(parsed)
 
-        #We have the contents of the array, now generate our types.
+        # We have the contents of the array, now generate our types.
         
         counts = {}
         
         CREATE_TABLE_SQL = "CREATE TABLE "+table_name+" ("
 
-        for column in twod_array:#for each column
+        for column in twod_array: # for each column
             rand_sample = [ column[i] for i in sorted(random.sample(range(len(column)), min(len(column),SAMPLE_SIZE))) ]
 
             type = type_classifier(rand_sample)

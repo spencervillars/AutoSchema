@@ -145,13 +145,26 @@ class SQLExecute(object):
     def execute_normal_sql(self, split_sql):
         _logger.debug('Regular sql statement. sql: %r', split_sql)
         
-        #WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. MEANING, IT CAN'T HANDLE FLOATS. -S. Villars, 2016
+        # 'WHAT? For some reason sqlparse CANT DEAL WITH PERIODS. 
+        # MEANING, IT CAN'T HANDLE FLOATS.' -S. Villars, 2016
         split_sql = split_sql.replace(".",HACK_MAGIC);
-        parsed = sqlparse.parse(split_sql)
-        stmt = parsed[0]
+
+        #
+        # parse the sql input.
+        # e.g. stmt => 'INSERT INTO eg_table VALUES (....)'
+        #
+        parsed = sqlparse.parse(split_sql) 
+        stmt = parsed[0] 
         type = stmt.get_type().upper()
-    
+        
+        #
+        # check to see if we are inserting into tablet that already exists.
+        # if not, generate its schema.
+        # if yes, check to see if the data we need to rearrange input
+        #
         if (type == "INSERT" or type == "REPLACE") and str(stmt.tokens[2]).upper() == "INTO":
+            # TODO: (in the future) we may want to support some other types 
+            # of statments, not just ones the look like "INSERT/REPLACE INTO"
             matched = False
             table_name = str(stmt.tokens[4]).upper()
             for table in self.tables():
@@ -159,10 +172,12 @@ class SQLExecute(object):
                     matched = True
                     break
             if not matched:
-                #We now have a table that is not already in our database.
-                #Let's call our table creation function.
+                # We now have a table that is not already in our database.
+                # Let's call our table creation function.
                 self.generate_schema(stmt)
+
             else:
+                # TODO: check_rearranged() always returns True
                 if autoschema.check_rearranged(0):
                     split_sql = autoschema.rearrange(stmt,self)
     
