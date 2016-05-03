@@ -38,8 +38,7 @@ PROPER_NAMES = {} #{"name":[],"country":[],"location":[],"plant":[]}
 
 
 #
-# We load the dictionaries.
-#
+# Load the dictionaries:
 #   directory path
 #       for every file in directory
 #           for every line in file
@@ -78,9 +77,10 @@ def isstring(value):
 
 
 #
-# an AutoSchema classifier object. Imported from as_classifier
+# An AutoSchema classifier object. Imported from as_classifier.
+# The argument is the minimum_set_similarity.
 #
-cl = asc(150)
+cl = asc(150)  # TODO: the AutoSchema object should probably initialize its own as_classifier object
 
 
 class AutoSchema:
@@ -117,13 +117,22 @@ class AutoSchema:
         deviations = []
         sequential = []
         
+        #
+        # extract columns names and their datatypes from table
+        #
         for table_column in sqlexecute.columns_type(table_name):
             names.append(table_column[0])
             types.append(table_column[1].upper())
             values.append([])
         
+        #
+        # get a random sample from table
+        #
         select_query = "SELECT * FROM " + table_name + " ORDER BY RAND() LIMIT " + str(LARGE_SAMPLE_SIZE)
 
+        #
+        # store values from existing table into 'values' array
+        #
         with sqlexecute.conn.cursor() as cur:
             cur.execute(select_query)
             for row in cur:
@@ -131,7 +140,10 @@ class AutoSchema:
                 for value in row:
                     values[i].append(value)
                     i += 1
-    
+        #
+        # compute statistical information for each column if it is an INT or FLOAT
+        # otherwise, fill in 0 for that columns in the stats arrays
+        #
         for i in range(len(names)):
             type = types[i]
             value_array = values[i]
@@ -146,32 +158,30 @@ class AutoSchema:
             means.append(tuple[0])
             deviations.append(tuple[1])
             #sequential.append(check_sequential(value_array))
-    
-        
-        twod_array = [];
-        output_array = []
-        
+            
         
         par = parsed.token_next_by_instance(0, sqlparse.sql.Parenthesis)
         
-        #
-        #TODO: ADD SUPPORT FOR "INSERT INTO TABLE (COL1, COL2, COL3) VALUES ()"
-        #
         
-        #Read in the text in parentheses and parse it into actual values.
+        # TODO: ADD SUPPORT FOR "INSERT INTO TABLE (COL1, COL2, COL3) VALUES ()"
+
+        #
+        # Read in the text in parentheses (i.e. the input) and parse it into 
+        # actual values. 'par' points to a parenthesis group token.
+        #
+        twod_array = [];  # each row is one row from input
+        output_array = []
         while par != None:
-            #par points to a parenthesis group token
-            #print(par, file=sys.stderr)
-            
             parser = shlex.shlex(par.token_next(0).value)
             parser.whitespace += ','
             parser.whitespace_split = True
             array = [x.strip("\'\"").replace(HACK_MAGIC,".") for x in list(parser)]
+           
             twod_array.append(array)
 
             par = parsed.token_next_by_instance(parsed.token_index(par)+1, sqlparse.sql.Parenthesis)
- 
-         #print("testing2",file=sys.stderr)
+
+         
         for row in twod_array:
      
             score_matrix = []
@@ -222,8 +232,8 @@ class AutoSchema:
 
                 score_matrix.append(scores)
     
-            #we should now have a square matrix. Let's check this.
-            #print(score_matrix,file=sys.stderr)
+            #vwe should now have a square matrix. Let's check this.
+            #vprint(score_matrix,file=sys.stderr)
             indices = munk.compute(score_matrix)
 
             rearranged_array = [None] * len(row)
@@ -232,7 +242,7 @@ class AutoSchema:
             #print(rearranged_array,file=sys.stderr)
             output_array.append(rearranged_array)
         
-        #now to generate the sql...
+        # now to generate the sql...
         SQL_QUERY = ""
             
         for token in parsed.tokens:
@@ -262,9 +272,8 @@ class AutoSchema:
         Input: An insert statement that contains all values for a table that
             
         '''
-        #print(stmt.tokens, file=sys.stderr)
         
-        table_name = parsed.tokens[4].value#TODO: should generalize this.
+        table_name = parsed.tokens[4].value # TODO: should generalize this.
         
         twod_array = self.parse_values(parsed)
 
