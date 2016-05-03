@@ -159,10 +159,10 @@ class AutoSchema:
         # otherwise, fill in 0 for that columns in the stats arrays
         #
         for i in range(len(names)):
-            type = types[i]
+            sqltype = types[i]
             value_array = values[i]
         
-            if type != "FLOAT" and type != "INT":
+            if sqltype != "FLOAT" and sqltype != "INT":
                 means.append(0)
                 deviations.append(0)
                 sequential.append(0)
@@ -214,7 +214,7 @@ class AutoSchema:
                 
                 for i in range(len(row)):
                     name = names[i]
-                    type = types[i]
+                    sqltype = types[i]
                     column_values = values[i]
                     
                     score = 2
@@ -330,21 +330,24 @@ class AutoSchema:
         for column in twod_array: # for each column
             rand_sample = [ column[i] for i in sorted(random.sample(range(len(column)), min(len(column),SAMPLE_SIZE))) ]
 
-            type = type_classifier(rand_sample)
+            sqltype = type_classifier(rand_sample)
             max_length = 0
 
-            if type not in counts.keys():
-                counts[type] = 1
+            # TODO: we can make this way more DRY
+            # ensure columns are uniquely named
+            if sqltype not in counts.keys():
+                counts[sqltype] = 1
             else:
-                counts[type] = counts[type] + 1
+                counts[sqltype] = counts[sqltype] + 1
         
             label = "Unk"
             
-            if type == 'string':
+            if sqltype == 'string':
                 
                 # generate our random samples from dict
                 max_length = len(max(column,key=len))
                 
+                # probe the dictionary with input sample
                 max_count = 0
                 match = ""
                 for key in DICTIONARIES:
@@ -355,9 +358,11 @@ class AutoSchema:
                     if max_count < count:
                         max_count = count
                         match = key
-
+                
+                # if able to get enough dictionary matches, no need to run wordnet
                 if max_count > len(rand_sample)*DICT_FRACTION:
                     label = match
+                # else, we run wordnet for sematic similarity between dict/input samples
                 else:
                     dict_samples = {}
                     for key in DICTIONARIES:
@@ -367,22 +372,29 @@ class AutoSchema:
                     max_similarity = 0 	# handles the similarity acceptance threshold on server side?
                     for d in dict_samples:
                         dict_sample = dict_samples[d]
-                        
+                        print('Using wordnet here')
                         spts = cl.findShortestPathToSet(dict_sample,rand_sample)
                         #print(d + " " + str(spts))
                         if spts > max_similarity and spts >= cl.minimum_set_similarity:
                             max_similarity = spts
                             label = d
 
+                # ensure columns are uniquely named
+                if label not in counts.keys():
+                    counts[label] = 1
+                else:
+                    counts[label] = counts[label] + 1
+                label = label + str(counts[label])
+
             else:
-                label = type + str(counts[type])
+                label = sqltype + str(counts[sqltype])
 
-            if type in TYPE_LOOKUP_TABLE.keys():
-                type = TYPE_LOOKUP_TABLE[type]
+            if sqltype in TYPE_LOOKUP_TABLE.keys():
+                sqltype = TYPE_LOOKUP_TABLE[sqltype]
 
-            type = type.upper()
+            sqltype = sqltype.upper()
 
-            CREATE_TABLE_SQL += str(label) + " " + type + ("("+str(max_length+100)+")" if type == 'VARCHAR' else "") + ","
+            CREATE_TABLE_SQL += str(label) + " " + sqltype + ("("+str(max_length+100)+")" if sqltype == 'VARCHAR' else "") + ","
             
         # alright, now actually create the table.
         
